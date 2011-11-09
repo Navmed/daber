@@ -312,7 +312,7 @@ namespace DaberGen
             sb.AppendLine("public class " + singular);
 			sb.AppendLine(("{"));
 			
-			sb.AppendLine();
+//			sb.AppendLine();
 			sb.Append(GetClassFields(table));
 			sb.AppendLine(("}"));
 			sb.AppendLine();
@@ -321,8 +321,8 @@ namespace DaberGen
 			sb.AppendLine(GetAssignments(table, true));
 			sb.AppendLine();
 			sb.AppendLine(GetAssignments(table, false));
-			sb.AppendLine();
-			sb.AppendLine(GetForm(table));
+
+
 			sb.AppendLine(("*/"));
 
 			return sb.ToString();
