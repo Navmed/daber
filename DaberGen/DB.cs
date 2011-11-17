@@ -196,7 +196,7 @@ namespace DaberGen
 				if(newWord)
 					c = (char)(Convert.ToInt32(ca[i]) - diff);
 
-				if(c == '_')
+				if(c == '_' || c == ' ')
 				{
 					newWord = true;
 				}
