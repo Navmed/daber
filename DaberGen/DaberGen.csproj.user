@@ -11,9 +11,9 @@
     <VerifyUploadedFiles>false</VerifyUploadedFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>mysql "SERVER=localhost;DATABASE=docpad;USER=docpad;PASSWORD=doc1092pad;" ProviderDetails</StartArguments>
+    <StartArguments>mysql "SERVER=localhost;DATABASE=docpad;USER=docpad;PASSWORD=doc1092pad;" Patient</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <StartArguments>"Data Source=174.120.207.3;Initial Catalog=Dev;User ID=mybox;Password=boxify" Earnings</StartArguments>
+    <StartArguments>mysql "Data Source=174.120.207.3;Initial Catalog=Dev;User ID=mybox;Password=boxify" Patient</StartArguments>
   </PropertyGroup>
 </Project>

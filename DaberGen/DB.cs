@@ -153,8 +153,12 @@ namespace DaberGen
 							object o = null;
 							if (database == EDatabase.MySQL)
 							{
+								//Exceptions that are not found in the enum, but the database seems to allow
 								if (dbtype == "int")
 									dbtype = "Int32";
+								else if (dbtype == "tinyint")
+									dbtype = "byte";
+
 								o = Enum.Parse(typeof(MySqlDbType), dbtype, true);
 							}
 							else
