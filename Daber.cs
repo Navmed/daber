@@ -942,13 +942,12 @@ namespace Daber
 					else if (database == EDatabase.MySQL)
 					{
 						cmd.CommandText = string.Format("INSERT INTO {0} ({1}) VALUES ({2})", table, sbCols.ToString(), sbVals.ToString());
-
-						//todo: do the mysql version to get last inserted id. Use LAST_INSERT_ID()
-
 						rows += cmd.ExecuteNonQuery();
-						id = 0;
-					}
 
+						cmd.CommandText = "SELECT LAST_INSERT_ID()";
+						object o = cmd.ExecuteScalar();
+						id = Convert.ToInt64(o);
+					}
 				}
 			}
 			catch (Exception ex)
@@ -1077,6 +1076,9 @@ namespace Daber
 				cmd.Parameters.Add(parName, MySqlDbType.VarChar).Value = oVal;
 			else if (oVal.GetType() == typeof(int))
 				cmd.Parameters.Add(parName, MySqlDbType.Int32).Value = oVal;
+			else if (oVal.GetType() == typeof(UInt32))
+				cmd.Parameters.Add(parName, MySqlDbType.UInt32).Value = oVal;
+
 			else if (oVal.GetType() == typeof(ulong))
 				cmd.Parameters.Add(parName, MySqlDbType.Int64).Value = oVal;
 			else if (oVal.GetType() == typeof(float))
