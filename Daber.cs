@@ -31,7 +31,7 @@ using MySql.Data.MySqlClient;
 namespace Daber
 {
 
-	[System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct)]
+	[System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct | System.AttributeTargets.Field)]
 	public class DBIgnore : System.Attribute
 	{
 	}
@@ -983,7 +983,7 @@ namespace Daber
 			if (b >= 0)
 				return true;
 
-			return CheckAttribute(t, "DBIgnore");
+			return CheckAttribute(t, typeof(DBIgnore).FullName);
 		}
 
 		public bool CheckAttribute(FieldInfo t, string attribName)
