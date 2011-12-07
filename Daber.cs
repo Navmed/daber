@@ -370,6 +370,8 @@ namespace Daber
 								ret.Add(default(T));
 							else if (typeof(T) == typeof(Int32) || typeof(T) == typeof(Int32?))
 								ret.Add((T)(object)Convert.ToInt32(reader.GetInt32(0)));
+							else if(typeof(T) == typeof(UInt32) || typeof(T) == typeof(UInt32?))
+								ret.Add((T)(object)Convert.ToUInt32(reader.GetInt32(0)));
 							else if (typeof(T) == typeof(string))
 								ret.Add((T)(object)reader.GetString(0));
 							else if (typeof(T) == typeof(DateTime) || typeof(T) == typeof(DateTime?))
@@ -393,7 +395,6 @@ namespace Daber
 							else if (typeof(T) == typeof(bool) || typeof(T) == typeof(bool?))
 							{
 								ret.Add((T)(reader.GetValue(0)));
-
 							}
 							else
 								throw new Exception("Return type not supported: " + typeof(T));
