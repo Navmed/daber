@@ -1,0 +1,68 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.Common;
+using System.Data.SqlClient;
+
+namespace Daber
+{
+    class SQLConnector:IConnector
+    {
+        protected string connString;
+        public SQLConnector(string connString)
+        {
+            this.connString = connString;
+        }
+
+        public DbConnection Connect()
+        {
+            return new SqlConnection(connString);
+        }
+
+        public void AddParameter(DbCommand dbCmd, string parName, object oVal)
+        {
+            SqlCommand cmd = (SqlCommand)dbCmd;
+
+            if (oVal == null)
+                cmd.Parameters.Add(parName, SqlDbType.VarChar).Value = DBNull.Value;
+            else if (oVal.GetType() == typeof(string))
+                cmd.Parameters.Add(parName, SqlDbType.VarChar).Value = oVal;
+            else if (oVal.GetType() == typeof(int))
+                cmd.Parameters.Add(parName, SqlDbType.Int).Value = oVal;
+            else if (oVal.GetType() == typeof(ulong))
+                cmd.Parameters.Add(parName, SqlDbType.BigInt).Value = oVal;
+            else if (oVal.GetType() == typeof(float))
+                cmd.Parameters.Add(parName, SqlDbType.Float).Value = oVal;
+            else if (oVal.GetType() == typeof(double))
+                cmd.Parameters.Add(parName, SqlDbType.Decimal).Value = oVal;
+            else if (oVal.GetType() == typeof(DateTime))
+                cmd.Parameters.Add(parName, SqlDbType.DateTime).Value = oVal;
+            else if (oVal.GetType() == typeof(Int64))
+                cmd.Parameters.Add(parName, SqlDbType.BigInt).Value = oVal;
+            else if (oVal is bool)
+                cmd.Parameters.Add(parName, SqlDbType.Bit).Value = Convert.ToBoolean(oVal);
+            else if (oVal is byte)
+                cmd.Parameters.Add(parName, SqlDbType.TinyInt).Value = Convert.ToByte(oVal);
+            else if (oVal is Guid)
+                cmd.Parameters.Add(parName, SqlDbType.UniqueIdentifier).Value = oVal;
+            else if (oVal is short)
+                cmd.Parameters.Add(parName, SqlDbType.SmallInt).Value = oVal;
+            else if (oVal.GetType().IsEnum)
+            {
+                System.Type type = oVal.GetType();
+                if (Enum.GetUnderlyingType(type) == typeof(Byte))
+                    cmd.Parameters.Add(parName, SqlDbType.TinyInt).Value = Convert.ToByte(oVal);
+                else if (Enum.GetUnderlyingType(type) == typeof(short))
+                    cmd.Parameters.Add(parName, SqlDbType.SmallInt).Value = oVal;
+                else if (Enum.GetUnderlyingType(type) == typeof(int))
+                    cmd.Parameters.Add(parName, SqlDbType.Int).Value = oVal;
+                else
+                    throw new Exception("Cannot handle " + oVal.GetType().ToString() + " in addParameter");
+            }
+            else
+            {
+                throw new Exception("Cannot handle " + oVal.GetType().ToString() + " in addParameter");
+            }
+        }
+    }
+}
