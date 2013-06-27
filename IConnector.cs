@@ -11,5 +11,6 @@ namespace Daber
     {
         DbConnection Connect();
         void AddParameter(DbCommand cmd, string parName, object oVal);
+        int Insert(DbCommand cmd, string table, string cols, string vals, out long id);
     }
 }

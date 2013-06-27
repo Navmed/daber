@@ -12,9 +12,6 @@ The Original Code is Daber
 The Initial Developer of the Original Code is Naveed Ahmed are Copyright (C) 2010. All Rights Reserved. 
 */
 
-
-
-
 using System;
 using System.Data;
 using System.Configuration;
@@ -26,16 +23,14 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 
 using System.Data.Common;
-using MySql.Data.MySqlClient;
+
 
 namespace Daber
 {
-
 	[System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct | System.AttributeTargets.Field)]
 	public class DBIgnore : System.Attribute
 	{
 	}
-
 
 	public delegate void DLogError(string s, Exception e);
 	public class DB
@@ -60,218 +55,608 @@ namespace Daber
 		protected DLogError logError;
 		public DLogError LogError { get { return (this.logError); } set { this.logError = value; } }
 
-		public enum EDatabase
-		{
-			NotSpecified = 0,
-			SQLServer = 1,
-			MySQL = 2
-		}
 
-		protected EDatabase database = EDatabase.NotSpecified;
+		
+        IConnector connector;
 
-		public DB(string connectionString, EDatabase database)
+		public DB(string connectionString, IConnector connector)
 		{
 			this.connString = connectionString;
-			this.database = database;
+			//=this.database = database;
+            this.connector = connector;
 		}
 
-		DbCommand connect()
-		{
-			DbConnection conn = null;
-			switch (database)
-			{
-				case EDatabase.SQLServer:
-					conn = new SqlConnection(connString);
-					break;
+        /// <summary>
+        /// Gets a single row/object. Condition should be specifed in the list
+        /// </summary>
+        /// <typeparam name="T">Class of object</typeparam>
+        /// <param name="table">Table Name</param>
+        /// <param name="getColumn">The columns to get, you can use "*" or "col1, col2 ..." </param>
+        /// <param name="conditionList"> conditionList has column name and value pairs. The default condition operation is '=', to use '>' or '<' add the operator at the end of the column</param>
+        /// <returns>The row with the object or null if no results</returns>
+        public T Get<T>(string table, string getColumn, params object[] conditionList)
+        {
+            List<T> l = GetList<T>(table, getColumn, null, null, conditionList);
+            if (l == null || l.Count == 0)
+                return default(T);
+            return l[0];
+        }
 
-				case EDatabase.MySQL:
-					conn = new MySqlConnection(connString);
-					break;
+        /// <summary>
+        /// Gets a single row/object. Condition should be specifed in the list
+        /// </summary>
+        /// <typeparam name="T">Class of object</typeparam>
+        /// <param name="table">Table Name</param>
+        /// <param name="getColumn">The columns to get, you can use "*" or "col1, col2 ..." </param>
+        /// <param name="extraCondition">And additional conditions that might not be key value pairs that cannot go in the conditionList. Use null if no extra condition.</param>
+        /// <param name="conditionList"> conditionList has column name and value pairs. The default condition operation is '=', to use '>' or '<' add the operator at the end of the column</param>
+        /// <returns>The row with the object or null if no results</returns>
+        public T GetWithCondition<T>(string table, string getColumn, string extraCondition, params object[] conditionList)
+        {
+            List<T> l = GetList<T>(table, getColumn, null, extraCondition, conditionList);
+            if (l == null || l.Count == 0)
+                return default(T);
+            return l[0];
+        }
 
-				default: return null;
-			}
+        /// <summary>
+        /// Get a list of rows/objects from a table
+        /// list has column name and value pairs. The default condition operation is '=', to use <, >, <=, =>, != OR 'LIKE' add the operator at the end of the column
+        /// The default conjunction between column name value pairs is 'AND'. Suffix ' OR' to use OR instead.
+        /// </summary>
+        /// <typeparam name="T">Class of object</typeparam>
+        /// <param name="table">Table Name</param>
+        /// <param name="getColumn">The columns to get, you can use "*" or "col1, col2 ..." </param>
+        /// <param name="orderColumn">The column(s) tor order the results by. Use null if no ordering necessary.</param>
+        /// <param name="extraCondition">And additional conditions that might not be key value pairs that cannot go in the conditionList. Use null if no extra condition.</param>
+        /// <param name="conditionList"> conditionList has column name and value pairs. The default condition operation is '=', to use '>' or '<' add the operator at the end of the column</param>
+        /// <returns></returns>
+        public List<T> GetList<T>(string table, string getColumn, string orderColumn, string extraCondition, params object[] conditionList)
+        {
+            if (conditionList.Length % 2 != 0)
+            {
+                throw new Exception("Number of columns does not match number of values in GetList");
+            }
 
-			conn.Open();
-			DbCommand cmd = conn.CreateCommand();
-			return cmd;
-		}
+            string cmdText = "";
+            //DbCommand cmd = new DbCommand();
+            DbCommand cmd = connect();
+            StringBuilder condition = null;
 
-		void close(DbCommand cmd)
-		{
-			if (cmd != null && cmd.Connection != null && cmd.Connection.State != ConnectionState.Closed)
-				cmd.Connection.Close();
-		}
+            condition = new StringBuilder(buildCondition(cmd, conditionList));
+            
+            if (!string.IsNullOrEmpty(extraCondition))
+            {
+                if (condition.ToString() != "")
+                    condition.Append(" AND ");
+                condition.Append(" " + extraCondition);
+            }
 
-		public int ExecuteNonQuery(string cmdText, params object[] list)
-		{
-			DbCommand cmd = null;
+            if (condition.Length > 0)
+                cmdText = string.Format("SELECT {0} FROM {1} WHERE {2}", getColumn, table, condition);
+            else
+                cmdText = string.Format("SELECT {0} FROM {1}", getColumn, table);
 
-			int rows = 0;
-			try
-			{
-				cmd = connect();
+            if (!string.IsNullOrEmpty(orderColumn))
+                cmdText += string.Format(" ORDER BY {0}", orderColumn);
 
-				for (int i = 0; i < list.Length; i++)
-				{
-					string col = "v" + i;
-					object o = list[i];
-					addParameter(cmd, col, o);
-				}
+            return getList<T>(cmd, cmdText);
+        }
 
-				cmd.CommandText = cmdText;
-				rows = cmd.ExecuteNonQuery();
-			}
-			catch (Exception ex)
-			{
-				if (logError != null)
-					logError("Exception in DB.ExecuteNonQuery", ex);
+        /// <summary>
+        /// Returns a list of objects of the class T. T should have the same fields specified in the select query in cmdText
+        /// Use this to use your own select query
+        /// The order of the parameters in the query should match the order of parameter values
+        /// The parameters can be repeated in the query, but the order of parameters in the query
+        /// should still match the parameter values
+        /// </summary>
+        /// <typeparam name="T">Class of the return type</typeparam>
+        /// <param name="cmdText">Select Query</param>
+        /// <param name="list">List of parameter values only (not key value pairs) for the query</param>
+        /// <returns></returns>
+        public List<T> GetListQuery<T>(string cmdText, params object[] list)
+        {
+            //DbCommand cmd = new DbCommand();
+            DbCommand cmd = connect();
+            return getList<T>(cmd, cmdText, list);
+        }
 
-				rows = -1;
-			}
-			finally
-			{
-				close(cmd);
-			}
+        /// <summary>
+        /// Returns an object of the class T. T should have the same fields specified in the select query in cmdText
+        /// Use this to use your own select query
+        /// The order of the parameters in the query should match the order of parameter values
+        /// The parameters can be repeated in the query, but the order of parameters in the query
+        /// should still match the parameter values
+        /// </summary>
+        /// <typeparam name="T">Class of the return type</typeparam>
+        /// <param name="cmdText">Select Query</param>
+        /// <param name="list">List of parameter values for the query</param>
+        /// <returns></returns>
+        public T GetQuery<T>(string cmdText, params object[] list)
+        {
+            List<T> l = GetListQuery<T>(cmdText, list);
+            if (l == null || l.Count == 0)
+                return default(T);
+            return l[0];
+        }
 
-			return rows;
-		}
+        /// <summary>
+        /// Update a table
+        /// conditionList has column name and value pairs. 
+        /// The default condition operation is '=', to use '>', '<', '>=' or '<=' add the operator at the end of the column
+        /// To set the value of one column from another column or more like col1 = col2 + col3, suffix the first column with '='
+        /// </summary>
+        /// <param name="table">Table Name</param>
+        /// <param name="numUpdateCols">The number of column value pairs that are columns to be updated</param>
+        /// <param name="conditionList">First include the column-value pairs to be updated and then the column-value pair conditions</param>
+        /// <returns>Number of rows updated. -1 for error/exception</returns>
+        public int Update(string table, string extraCondition, int numUpdateCols, params object[] conditionList)
+        {
+            int ret = 0;
 
-		public T Get<T>(string table, string getColumn, params object[] list)
-		{
-			List<T> l = GetList<T>(table, getColumn, null, null, list);
-			if (l == null || l.Count == 0)
-				return default(T);
-			return l[0];
-		}
+            if (conditionList.Length % 2 != 0)
+            {
+                throw new Exception("Number of columns does not match number of values in Update");
+            }
 
-		public T GetWithCondition<T>(string table, string getColumn, string extraCondition, params object[] list)
-		{
-			List<T> l = GetList<T>(table, getColumn, null, extraCondition, list);
-			if (l == null || l.Count == 0)
-				return default(T);
-			return l[0];
-		}
+            if (numUpdateCols > conditionList.Length)
+                throw new Exception("numUpdateCols > list.Length");
+
+            DbCommand cmd = null;
+
+            try
+            {
+                cmd = connect();
+
+                object[] conditions = new object[conditionList.Length - numUpdateCols * 2];
+                Array.Copy(conditionList, numUpdateCols * 2, conditions, 0, conditionList.Length - numUpdateCols * 2);
+                StringBuilder condition = new StringBuilder(buildCondition(cmd, conditions));
+
+                if (!string.IsNullOrEmpty(extraCondition))
+                {
+                    if (condition.ToString() != "")
+                        condition.Append(" AND ");
+                    condition.Append(" " + extraCondition);
+                }
+
+                StringBuilder updates = new StringBuilder();
+                for (int i = 0; i < numUpdateCols * 2; i += 2)
+                {
+                    object oVal = conditionList[i + 1];
+                    string col = conditionList[i].ToString();
+
+                    if (col.EndsWith("="))
+                    {
+                        col = col.Substring(0, col.Length - 1);	// remove the '='
+                        updates.AppendFormat("{0} = {1},", col, oVal);
+                    }
+                    else
+                    {
+                        updates.AppendFormat("{0}=@updateValue{1},", col, i / 2);
+                        addParameter(cmd, "@updateValue" + i / 2, oVal);
+                    }
+                }
+
+                updates.Remove(updates.Length - 1, 1);	// Remove the comma
+
+                cmd.CommandText = string.Format("UPDATE {0} SET {1} WHERE {2}", table, updates, condition);
+                ret = cmd.ExecuteNonQuery();
+            }
+            catch (Exception e)
+            {
+                if (logError != null)
+                    logError("Exception in Update " + buildLogCondition(conditionList), e);
+
+                ret = -1;
+            }
+            finally
+            {
+                close(cmd);
+            }
+
+            return ret;
+        }
+
+        /// <summary>
+        /// Delete rows from a table
+        /// </summary>
+        /// <param name="table">Table Name</param>
+        /// <param name="conditionList"> conditionList has column name and value pairs. The default condition operation is '=', to use '>' or '<' add the operator at the end of the column</param>
+        /// <returns></returns>
+        public int Delete(string table, params object[] conditionList)
+        {
+            if (conditionList.Length % 2 != 0)
+            {
+                throw new Exception("Number of columns does not match number of values in Delete");
+            }
+
+            int ret = 0;
+            DbCommand cmd = null;
+
+            try
+            {
+                cmd = connect();
+                string condition = buildCondition(cmd, conditionList);
+
+                if (conditionList == null || conditionList.Length == 0 || string.IsNullOrEmpty(condition))
+                    cmd.CommandText = string.Format("DELETE FROM {0}", table);
+                else
+                    cmd.CommandText = string.Format("DELETE FROM {0} WHERE {1}", table, condition);
+
+                ret = cmd.ExecuteNonQuery();
+            }
+            catch (Exception e)
+            {
+                if (logError != null)
+                    logError("Exception in Delete from" + table + " WHERE " + buildLogCondition(conditionList), e);
+
+                ret = -1;
+            }
+            finally
+            {
+                close(cmd);
+            }
+
+            return ret;
+        }
+
+        /// <summary>
+        /// Insert a new item/row in the table
+        /// </summary>
+        /// <typeparam name="T">Class of table/item</typeparam>
+        /// <param name="table">Table Name</param>
+        /// <param name="item">Item/Row to be inserted</param>
+        /// <returns></returns>
+        public int Insert<T>(string table, T item)
+        {
+            if (item == null)
+                return 0;
+
+            List<T> list = new List<T>(1);
+            list.Add(item);
+            return Insert<T>(table, list);
+        }
+
+        /// <summary>
+        /// Insert a new item/row in the table, but returns the id of the inserted item
+        /// </summary>
+        /// <typeparam name="T">Class of table/item</typeparam>
+        /// <param name="table">Table Name</param>
+        /// <param name="item">Item/Row to be inserted</param>
+        /// <param name="id">Returns the auto-incremented or IDENTITY primary key value of the newly added row</param>
+        /// <returns></returns>
+        public int Insert<T>(string table, T item, out long id)
+        {
+            id = 0;
+            if (item == null)
+                return 0;
+
+            List<T> list = new List<T>(1);
+            list.Add(item);
+            return Insert<T>(table, list, out id);
+        }
+
+        /// <summary>
+        /// Insert list of multiple objects
+        /// </summary>
+        /// <typeparam name="T">Class of object</typeparam>
+        /// <param name="table">Table Name</param>
+        /// <param name="list"></param>
+        /// <returns>number of rows successfully inserted</returns>
+        public int Insert<T>(string table, List<T> list)
+        {
+            long id = 0;
+            return Insert<T>(table, list, out id);
+        }
+
+        /// <summary>
+        /// Insert list of multiple objects
+        /// </summary>
+        /// <typeparam name="T">Class of object</typeparam>
+        /// <param name="table">Table Name</param>
+        /// <param name="list"></param>
+        /// /// <param name="id">Returns the auto-incremented or IDENTITY primary key value of the LAST newly added row</param>
+        /// <returns>number of rows successfully inserted</returns>
+        public int Insert<T>(string table, List<T> list, out long id)
+        {
+            id = 0;
+            if (list == null || list.Count == 0)
+                return 0;
+
+            List<FieldInfo> fields = getFields(typeof(T));
+            Dictionary<string, string> dbFieldMap = getDBFieldMap(table, typeof(T));
+            int rows = 0;
+
+            DbCommand cmd = null;
+
+            try
+            {
+                cmd = connect();
+
+                for (int i = 0; i < list.Count; i++)
+                {
+                    StringBuilder sbCols = new StringBuilder();
+                    StringBuilder sbVals = new StringBuilder();
+
+                    cmd.Parameters.Clear();
+
+                    object oVal = list[i];
+
+                    for (int j = 0; j < fields.Count; j++)
+                    {
+                        FieldInfo fi = fields[j];
+                        if (Ignore(fi))
+                            continue;
+
+                        if (!InsertId && fi.Name.Equals(IDCOL, StringComparison.CurrentCultureIgnoreCase))
+                            continue;
+
+                        string col = dbFieldMap[fi.Name];
+                        object fieldValue = fi.GetValue(oVal);
+                        addToInsertString(cmd, j, col, fieldValue, ref sbCols, ref sbVals);
+                    }
+
+                    sbCols.Remove(sbCols.Length - 2, 2);	// Remove the comma
+                    sbVals.Remove(sbVals.Length - 2, 2);	// Remove the comma
+
+                    rows = connector.Insert(cmd, table, sbCols.ToString(), sbVals.ToString(), out id);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (logError != null)
+                {
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("Table: " + table);
+                    foreach (T item in list)
+                    {
+                        sb.AppendLine(ObjectString(item));
+                    }
+
+                    logError("InsertIntoDB: \r\n" + sb.ToString(), ex);
+                }
+                rows = -1;
+            }
+            finally
+            {
+                close(cmd);
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Use this to execute a complex SQL non query like UPDATE, INSERT OR DELETE where the existing Update, Insert or Delete methods cannot be used.
+        /// </summary>
+        /// <param name="cmdText">The SQL non-query</param>
+        /// <param name="list">The parameter values</param>
+        /// <returns></returns>
+        public int ExecuteNonQuery(string cmdText, params object[] list)
+        {
+            DbCommand cmd = null;
+
+            int rows = 0;
+            try
+            {
+                cmd = connect();
+
+                for (int i = 0; i < list.Length; i++)
+                {
+                    string col = "v" + i;
+                    object o = list[i];
+                    addParameter(cmd, col, o);
+                }
+
+                cmd.CommandText = cmdText;
+                rows = cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                if (logError != null)
+                    logError("Exception in DB.ExecuteNonQuery", ex);
+
+                rows = -1;
+            }
+            finally
+            {
+                close(cmd);
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Goes through all the fields in the object and generates a string, useful for debugging
+        /// </summary>
+        /// <param name="o"></param>
+        /// <returns></returns>
+        public string ObjectString(object o, int indent = 1)
+        {
+            StringBuilder sb = new StringBuilder();
+
+            List<FieldInfo> fields = getFields(o.GetType());
+            string tabs = new string('\t', indent);
+
+            for (int j = 0; j < fields.Count; j++)
+            {
+                FieldInfo fi = fields[j];
+                if (Ignore(fi))
+                    continue;
+
+                object fieldValue = fi.GetValue(o);
+                sb.AppendLine(tabs + fi.Name + ": " + (fieldValue ?? "*NULL*"));
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Converts db field name format to class field format - removes underscores and capitalizes the words
+        /// </summary>
+        /// <param name="dbFieldName"></param>
+        /// <returns></returns>
+        public static string DBToCodeFieldName(string column)
+        {
+            int diff = 'a' - 'A';
+            StringBuilder sb = new StringBuilder(column.Length);
+            char[] ca = column.ToLower().ToCharArray();
+
+            bool newWord = true;
+
+            for (int i = 0; i < ca.Length; i++)
+            {
+                char c = ca[i];
+
+                if (newWord)
+                    c = (char)(Convert.ToInt32(ca[i]) - diff);
+
+                if (c == '_' || c == ' ')
+                {
+                    newWord = true;
+                }
+                else
+                {
+                    sb.Append(c);
+                    newWord = false;
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Add a custom mapping of db Column to class field. Use this if the db field and class name don't match
+        /// </summary>
+        /// <param name="list">alternate db column followed by class field name</param>
+        public void AddFieldIndexMap(Type t, params string[] list)
+        {
+            if (list.Length % 2 != 0)
+            {
+                throw new Exception("Number of columns does not match number of fields in AddFieldIndexMap");
+            }
+
+            for (int i = 0; i < list.Length; i += 2)
+            {
+                string col = list[i];
+                string classFieldName = list[i + 1];
+            }
 
 
+            Dictionary<string, int> map = new Dictionary<string, int>(list.Length / 2);
+            List<FieldInfo> fields = getFields(t);
 
+            for (int i = 0; i < list.Length; i += 2)
+            {
+                string dbFieldName = list[i];
+                string classFieldName = list[i + 1];
 
+                for (int j = 0; j < fields.Count; j++)
+                {
+                    if (fields[j].Name.Equals(classFieldName, StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        map.Add(dbFieldName, j);
+                        break;
+                    }
+                }
+            }
 
-		/// <summary>
-		/// Adds parameters to the cmd object. The parameter values are in list. 
-		/// The order of the parameters in the query should match the order of parameter values
-		/// The parameters can be repeated in the query, but the order of parameters in the query
-		/// should still match the parameter values
-		/// </summary>
-		/// <param name="cmd"></param>
-		/// <param name="list"></param>
-		void addParameters(DbCommand cmd, params object[] list)
-		{
-			if (list == null || list.Length == 0)
-				return;
+            DBFieldIndexMaps.Add(t.Name, map);
+        }
 
-			HashSet<string> parms = new HashSet<string>();
+        /// <summary>
+        /// Returns an intersection of the provided lists
+        /// </summary>
+        /// <param name="a">Sorted list</param>
+        /// <param name="b">Sorted list</param>
+        /// <returns></returns>
+        public static List<int> Intersect(List<int> a, List<int> b)
+        {
+            List<int> result = new List<int>(a.Count + b.Count);
 
-			Regex rgx = new Regex("@[0-9a-z_]+", RegexOptions.IgnoreCase);
-			MatchCollection matches = rgx.Matches(cmd.CommandText);
+            if (a == null || a.Count == 0)
+                return result;
+            else if (b == null || b.Count == 0)
+                return result;
 
-			int parNum = 0;
-			foreach (Match match in matches)
-			{
-				string parName = match.Value;
-				if (!parms.Contains(parName))
-				{
-					parms.Add(parName);
+            int i = 0, j = 0;
 
-					addParameter(cmd, parName, list[parNum]);
-					parNum++;
-				}
-			}
-		}
+            while (i < a.Count && j < b.Count)
+            {
+                while (i < a.Count && j < b.Count && a[i] < b[j])
+                    i++;
 
-		/// <summary>
-		/// Returns a list of objects of the class T. T should have the same fields specified in the select query in cmdText
-		///
-		/// The order of the parameters in the query should match the order of parameter values
-		/// The parameters can be repeated in the query, but the order of parameters in the query
-		/// should still match the parameter values
-		/// </summary>
-		/// <typeparam name="T">Class of the return type</typeparam>
-		/// <param name="cmdText">Select Query</param>
-		/// <param name="list">List of parameter values for the query</param>
-		/// <returns></returns>
-		public List<T> GetListQuery<T>(string cmdText, params object[] list)
-		{
-			//DbCommand cmd = new DbCommand();
-			DbCommand cmd = connect();
-			return getList<T>(cmd, cmdText, list);
-		}
+                bool added = false;
+                while (i < a.Count && j < b.Count && a[i] == b[j])
+                {
+                    if (!added)					// to avoid duplicates
+                        result.Add(a[i]);
+                    added = true;
+                    i++;
+                    j++;
+                }
 
-		/// <summary>
-		/// Returns an object of the class T. T should have the same fields specified in the select query in cmdText
-		///
-		/// The order of the parameters in the query should match the order of parameter values
-		/// The parameters can be repeated in the query, but the order of parameters in the query
-		/// should still match the parameter values
-		/// </summary>
-		/// <typeparam name="T">Class of the return type</typeparam>
-		/// <param name="cmdText">Select Query</param>
-		/// <param name="list">List of parameter values for the query</param>
-		/// <returns></returns>
+                while (i < a.Count && j < b.Count && a[i] > b[j])
+                    j++;
+            }
 
-		public T GetQuery<T>(string cmdText, params object[] list)
-		{
-			List<T> l = GetListQuery<T>(cmdText, list);
-			if (l == null || l.Count == 0)
-				return default(T);
-			return l[0];
-		}
+            return result;
+        }
 
+        static int CompareFieldInfo(FieldInfo x, FieldInfo y)
+        {
+            if (x == null)
+            {
+                if (y == null)
+                    return 0;
+                else
+                    return -1;
+            }
+            else
+            {
+                if (y == null)
+                    return 1;
+                else
+                {
+                    if (x.Name == y.Name)
+                        return 0;
 
-		/// <summary>
-		/// Get a list of rows from a table
-		/// list has column name and value pairs. The default condition operation is '=', to use <, >, <=, =>, != OR 'LIKE' add the operator at the end of the column
-		/// The default conjunction between column name value pairs is 'AND'. Suffix ' OR' to use OR instead.
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="table"></param>
-		/// <param name="getColumn"></param>
-		/// <param name="orderColumn"></param>
-		/// <param name="extraCondition"></param>
-		/// <param name="list"></param>
-		/// <returns></returns>
-		public List<T> GetList<T>(string table, string getColumn, string orderColumn, string extraCondition, params object[] list)
-		{
-			if (list.Length % 2 != 0)
-			{
-				throw new Exception("Number of columns does not match number of values in GetList");
-			}
+                    if (x.Name == "id")
+                        return -1;
+                    if (y.Name == "id")
+                        return 1;
 
-			string cmdText = "";
-			//DbCommand cmd = new DbCommand();
-			DbCommand cmd = connect();
-			StringBuilder condition = null;
+                    if (IsClass(x.FieldType) != IsClass(y.FieldType))
+                    {
+                        if (IsClass(x.FieldType)) // We want classes to be at the end
+                            return 1;
+                        else
+                            return -1;
+                    }
 
-			condition = new StringBuilder(buildCondition(cmd, list));
+                    return x.Name.CompareTo(y.Name);
+                }
+            }
+        }
 
+        static bool IsClass(Type t)
+        {
+            return (t.IsClass && t.Name != "String" && !IsStringArray(t));
+        }
 
-			if (!string.IsNullOrEmpty(extraCondition))
-			{
-				if (condition.ToString() != "")
-					condition.Append(" AND ");
-				condition.Append(" " + extraCondition);
-			}
+        static bool IsArray(FieldInfo fi)
+        {
+            return (fi.FieldType.IsArray || (fi.FieldType.FullName.IndexOf("System.Collections.Generic.List") >= 0) && !IsStringArray(fi));
+        }
 
-			if (condition.Length > 0)
-				cmdText = string.Format("SELECT {0} FROM {1} WHERE {2}", getColumn, table, condition);
-			else
-				cmdText = string.Format("SELECT {0} FROM {1}", getColumn, table);
+        static bool IsStringArray(FieldInfo fi)
+        {
+            return (fi.FieldType.FullName.IndexOf("System.Collections.Generic.List`1[[System.String") >= 0);
+        }
 
-			if (!string.IsNullOrEmpty(orderColumn))
-				cmdText += string.Format(" ORDER BY {0}", orderColumn);
-
-			return getList<T>(cmd, cmdText);
-		}
-
+        static bool IsStringArray(Type t)
+        {
+            return (t.FullName.IndexOf("System.Collections.Generic.List`1[[System.String") >= 0);
+        }
 
 		List<T> getList<T>(DbCommand cmd, string cmdText, params object[] list)
 		{
@@ -438,43 +823,6 @@ namespace Daber
 		}
 
 		/// <summary>
-		/// Converts db field name format to class field format - removes underscores and capitalizes the words
-		/// </summary>
-		/// <param name="dbFieldName"></param>
-		/// <returns></returns>
-		public static string DBToCodeFieldName(string column)
-		{
-			int diff = 'a' - 'A';
-			StringBuilder sb = new StringBuilder(column.Length);
-			char[] ca = column.ToLower().ToCharArray();
-
-			bool newWord = true;
-
-			for (int i = 0; i < ca.Length; i++)
-			{
-				char c = ca[i];
-
-				if (newWord)
-					c = (char)(Convert.ToInt32(ca[i]) - diff);
-
-				if (c == '_' || c == ' ')
-				{
-					newWord = true;
-				}
-				else
-				{
-					sb.Append(c);
-					newWord = false;
-				}
-			}
-
-			return sb.ToString();
-		}
-
-
-
-
-		/// <summary>
 		/// Get the fields from a given Type. Cached. 
 		/// </summary>
 		/// <param name="t">the Type</param>
@@ -494,48 +842,6 @@ namespace Daber
 
 			return fields;
 		}
-
-
-		/// <summary>
-		/// Add a custom mapping of db Column to class field 
-		/// </summary>
-		/// <param name="list">alternate db column followed by class field name</param>
-		public void AddFieldIndexMap(Type t, params string[] list)
-		{
-			if (list.Length % 2 != 0)
-			{
-				throw new Exception("Number of columns does not match number of fields in AddFieldIndexMap");
-			}
-
-			for (int i = 0; i < list.Length; i += 2)
-			{
-				string col = list[i];
-				string classFieldName = list[i + 1];
-			}
-
-
-			Dictionary<string, int> map = new Dictionary<string, int>(list.Length / 2);
-			List<FieldInfo> fields = getFields(t);
-
-			for (int i = 0; i < list.Length; i += 2)
-			{
-				string dbFieldName = list[i];
-				string classFieldName = list[i + 1];
-
-				for (int j = 0; j < fields.Count; j++)
-				{
-					if (fields[j].Name.Equals(classFieldName, StringComparison.CurrentCultureIgnoreCase))
-					{
-						map.Add(dbFieldName, j);
-						break;
-					}
-				}
-			}
-
-			DBFieldIndexMaps.Add(t.Name, map);
-		}
-
-
 
 		Dictionary<string, int> getDBFieldIndexMap(Type t, DbDataReader reader)
 		{
@@ -567,7 +873,6 @@ namespace Daber
 
 			return map;
 		}
-
 
 		/// <summary>
 		/// Builds the condition part of the query
@@ -673,127 +978,6 @@ namespace Daber
 
 		}
 
-
-
-		/// <summary>
-		/// Update a table
-		/// list has column name and value pairs. 
-		/// The default condition operation is '=', to use '>', '<', '>=' or '<=' add the operator at the end of the column
-		/// To set the value of one column from another column or more like col1 = col2 + col3, suffix the first column with '='
-		/// </summary>
-		/// <param name="table"></param>
-		/// <param name="numUpdateCols">The number of column value pairs that are columns to be updated</param>
-		/// <param name="list">First include the column-value pairs to be updated and then the column-value pair conditions</param>
-		/// <returns>Number of rows updated. -1 for error/exception</returns>
-		public int Update(string table, string extraCondition, int numUpdateCols, params object[] list)
-		{
-			int ret = 0;
-
-			if (list.Length % 2 != 0)
-			{
-				throw new Exception("Number of columns does not match number of values in Update");
-			}
-
-			if (numUpdateCols > list.Length)
-				throw new Exception("numUpdateCols > list.Length");
-
-			DbCommand cmd = null;
-
-			try
-			{
-				cmd = connect();
-
-				object[] conditions = new object[list.Length - numUpdateCols * 2];
-				Array.Copy(list, numUpdateCols * 2, conditions, 0, list.Length - numUpdateCols * 2);
-				StringBuilder condition = new StringBuilder(buildCondition(cmd, conditions));
-
-				if (!string.IsNullOrEmpty(extraCondition))
-				{
-					if (condition.ToString() != "")
-						condition.Append(" AND ");
-					condition.Append(" " + extraCondition);
-				}
-
-				StringBuilder updates = new StringBuilder();
-				for (int i = 0; i < numUpdateCols * 2; i += 2)
-				{
-					object oVal = list[i + 1];
-					string col = list[i].ToString();
-
-					if (col.EndsWith("="))
-					{
-						col = col.Substring(0, col.Length - 1);	// remove the '='
-						updates.AppendFormat("{0} = {1},", col, oVal);
-					}
-					else
-					{
-						updates.AppendFormat("{0}=@updateValue{1},", col, i / 2);
-						addParameter(cmd, "@updateValue" + i / 2, oVal);
-					}
-				}
-
-				updates.Remove(updates.Length - 1, 1);	// Remove the comma
-
-				cmd.CommandText = string.Format("UPDATE {0} SET {1} WHERE {2}", table, updates, condition);
-				ret = cmd.ExecuteNonQuery();
-			}
-			catch (Exception e)
-			{
-				if (logError != null)
-					logError("Exception in Update " + buildLogCondition(list), e);
-
-				ret = -1;
-			}
-			finally
-			{
-				close(cmd);
-			}
-
-			return ret;
-		}
-
-		public int Delete(string table, params object[] list)
-		{
-			if (list.Length % 2 != 0)
-			{
-				throw new Exception("Number of columns does not match number of values in Delete");
-			}
-
-			int ret = 0;
-
-
-			DbCommand cmd = null;
-
-			try
-			{
-				cmd = connect();
-
-
-
-				string condition = buildCondition(cmd, list);
-
-				if (list == null || list.Length == 0 || string.IsNullOrEmpty(condition))
-					cmd.CommandText = string.Format("DELETE FROM {0}", table);
-				else
-					cmd.CommandText = string.Format("DELETE FROM {0} WHERE {1}", table, condition);
-
-				ret = cmd.ExecuteNonQuery();
-			}
-			catch (Exception e)
-			{
-				if (logError != null)
-					logError("Exception in Delete from" + table + " WHERE " + buildLogCondition(list), e);
-
-				ret = -1;
-			}
-			finally
-			{
-				close(cmd);
-			}
-
-			return ret;
-		}
-
 		protected Dictionary<string, string> getDBFieldMap(string table, Type t)
 		{
 			if (DBFieldMaps.ContainsKey(table))
@@ -846,159 +1030,7 @@ namespace Daber
 			return null;
 		}
 
-
-		public int Insert<T>(string table, T item)
-		{
-			if (item == null)
-				return 0;
-
-			List<T> list = new List<T>(1);
-			list.Add(item);
-			return Insert<T>(table, list);
-		}
-
-		public int Insert<T>(string table, T item, out long id)
-		{
-			id = 0;
-			if (item == null)
-				return 0;
-
-			List<T> list = new List<T>(1);
-			list.Add(item);
-			return Insert<T>(table, list, out id);
-		}
-
-
-		public int Insert<T>(string table, List<T> list)
-		{
-			long id = 0;
-			return Insert<T>(table, list, out id);
-		}
-
-		/// <summary>
-		/// Insert list of multiple objects
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="table"></param>
-		/// <param name="list"></param>
-		/// <returns></returns>
-		public int Insert<T>(string table, List<T> list, out long id)
-		{
-			id = 0;
-			if (list == null || list.Count == 0)
-				return 0;
-
-			List<FieldInfo> fields = getFields(typeof(T));
-			Dictionary<string, string> dbFieldMap = getDBFieldMap(table, typeof(T));
-			int rows = 0;
-
-
-
-			DbCommand cmd = null;
-
-			try
-			{
-				cmd = connect();
-
-				for (int i = 0; i < list.Count; i++)
-				{
-					StringBuilder sbCols = new StringBuilder();
-					StringBuilder sbVals = new StringBuilder();
-
-					cmd.Parameters.Clear();
-
-					object oVal = list[i];
-
-					for (int j = 0; j < fields.Count; j++)
-					{
-						FieldInfo fi = fields[j];
-						if (Ignore(fi))
-							continue;
-
-						if (!InsertId && fi.Name.Equals(IDCOL, StringComparison.CurrentCultureIgnoreCase))
-							continue;
-
-						string col = dbFieldMap[fi.Name];
-						object fieldValue = fi.GetValue(oVal);
-						addToInsertString(cmd, j, col, fieldValue, ref sbCols, ref sbVals);
-					}
-
-					sbCols.Remove(sbCols.Length - 2, 2);	// Remove the comma
-					sbVals.Remove(sbVals.Length - 2, 2);	// Remove the comma
-
-					if (database == EDatabase.SQLServer)
-					{
-						cmd.CommandText = string.Format("INSERT INTO {0} ({1}) VALUES ({2})  SET @newId = SCOPE_IDENTITY()", table, sbCols.ToString(), sbVals.ToString());
-
-						SqlParameter newId = new SqlParameter("@newId", SqlDbType.BigInt);
-						newId.Direction = ParameterDirection.Output;
-						cmd.Parameters.Add(newId);
-
-						rows += cmd.ExecuteNonQuery();
-						if (newId.Value is DBNull)
-							id = 0;
-						else
-							id = Convert.ToInt64(newId.Value);
-					}
-					else if (database == EDatabase.MySQL)
-					{
-						cmd.CommandText = string.Format("INSERT INTO {0} ({1}) VALUES ({2})", table, sbCols.ToString(), sbVals.ToString());
-						rows += cmd.ExecuteNonQuery();
-
-						cmd.CommandText = "SELECT LAST_INSERT_ID()";
-						object o = cmd.ExecuteScalar();
-						id = Convert.ToInt64(o);
-					}
-				}
-			}
-			catch (Exception ex)
-			{
-				if (logError != null)
-				{
-					StringBuilder sb = new StringBuilder();
-					sb.AppendLine("Table: " + table);
-					foreach (T item in list)
-					{
-						sb.AppendLine(ObjectString(item));
-					}
-
-					logError("InsertIntoDB: \r\n" + sb.ToString(), ex);
-				}
-				rows = -1;
-			}
-			finally
-			{
-				close(cmd);
-			}
-
-			return rows;
-		}
-
-		public bool Ignore(FieldInfo t)
-		{
-			int b = ignoredClasses.BinarySearch(t.FieldType.Name);
-			if (b >= 0)
-				return true;
-
-			b = ignoredFields.BinarySearch(t.Name);
-			if (b >= 0)
-				return true;
-
-			return CheckAttribute(t, typeof(DBIgnore).FullName);
-		}
-
-		public bool CheckAttribute(FieldInfo t, string attribName)
-		{
-			Object[] ca = t.GetCustomAttributes(true);
-			foreach (Object attr in ca)
-			{
-				if (attr.ToString() == attribName)
-					return true;
-			}
-			return false;
-		}
-
-		void addToInsertString(DbCommand cmd, int index, string col, object value, ref StringBuilder sbCols, ref StringBuilder sbValues)
+        void addToInsertString(DbCommand cmd, int index, string col, object value, ref StringBuilder sbCols, ref StringBuilder sbValues)
 		{
 			sbCols.Append(col + ", ");
 
@@ -1017,225 +1049,109 @@ namespace Daber
 			sbValues.Append(parName + ", ");
 		}
 
-		static void addParameter(DbCommand cmd, string parName, object oVal)
+		void addParameter(DbCommand cmd, string parName, object oVal)
 		{
-			if (cmd is SqlCommand)
-				addParameter((SqlCommand)cmd, parName, oVal);
-			else if (cmd is MySqlCommand)
-				addParameter((MySqlCommand)cmd, parName, oVal);
-		}
-
-		static void addParameter(SqlCommand cmd, string parName, object oVal)
-		{
-			if (oVal == null)
-				cmd.Parameters.Add(parName, SqlDbType.VarChar).Value = DBNull.Value;
-			else if (oVal.GetType() == typeof(string))
-				cmd.Parameters.Add(parName, SqlDbType.VarChar).Value = oVal;
-			else if (oVal.GetType() == typeof(int))
-				cmd.Parameters.Add(parName, SqlDbType.Int).Value = oVal;
-			else if (oVal.GetType() == typeof(ulong))
-				cmd.Parameters.Add(parName, SqlDbType.BigInt).Value = oVal;
-			else if (oVal.GetType() == typeof(float))
-				cmd.Parameters.Add(parName, SqlDbType.Float).Value = oVal;
-			else if (oVal.GetType() == typeof(double))
-				cmd.Parameters.Add(parName, SqlDbType.Decimal).Value = oVal;
-			else if (oVal.GetType() == typeof(DateTime))
-				cmd.Parameters.Add(parName, SqlDbType.DateTime).Value = oVal;
-			else if (oVal.GetType() == typeof(Int64))
-				cmd.Parameters.Add(parName, SqlDbType.BigInt).Value = oVal;
-			else if (oVal is bool)
-				cmd.Parameters.Add(parName, SqlDbType.Bit).Value = Convert.ToBoolean(oVal);
-			else if (oVal is byte)
-				cmd.Parameters.Add(parName, SqlDbType.TinyInt).Value = Convert.ToByte(oVal);
-			else if (oVal is Guid)
-				cmd.Parameters.Add(parName, SqlDbType.UniqueIdentifier).Value = oVal;
-			else if (oVal is short)
-				cmd.Parameters.Add(parName, SqlDbType.SmallInt).Value = oVal;
-			else if (oVal.GetType().IsEnum)
-			{
-				System.Type type = oVal.GetType();
-				if (Enum.GetUnderlyingType(type) == typeof(Byte))
-					cmd.Parameters.Add(parName, SqlDbType.TinyInt).Value = Convert.ToByte(oVal);
-				else if (Enum.GetUnderlyingType(type) == typeof(short))
-					cmd.Parameters.Add(parName, SqlDbType.SmallInt).Value = oVal;
-				else if (Enum.GetUnderlyingType(type) == typeof(int))
-					cmd.Parameters.Add(parName, SqlDbType.Int).Value = oVal;
-				else
-					throw new Exception("Cannot handle " + oVal.GetType().ToString() + " in addParameter");
-			}
-			else
-			{
-				throw new Exception("Cannot handle " + oVal.GetType().ToString() + " in addParameter");
-			}
-		}
-
-		static void addParameter(MySqlCommand cmd, string parName, object oVal)
-		{
-			if (oVal == null)
-				cmd.Parameters.Add(parName, MySqlDbType.VarChar).Value = DBNull.Value;
-			else if (oVal.GetType() == typeof(string))
-				cmd.Parameters.Add(parName, MySqlDbType.VarChar).Value = oVal;
-			else if (oVal.GetType() == typeof(int))
-				cmd.Parameters.Add(parName, MySqlDbType.Int32).Value = oVal;
-			else if (oVal.GetType() == typeof(UInt32))
-				cmd.Parameters.Add(parName, MySqlDbType.UInt32).Value = oVal;
-
-			else if (oVal.GetType() == typeof(ulong))
-				cmd.Parameters.Add(parName, MySqlDbType.Int64).Value = oVal;
-			else if (oVal.GetType() == typeof(float))
-				cmd.Parameters.Add(parName, MySqlDbType.Float).Value = oVal;
-			else if (oVal.GetType() == typeof(double))
-				cmd.Parameters.Add(parName, MySqlDbType.Decimal).Value = oVal;
-			else if (oVal.GetType() == typeof(DateTime))
-				cmd.Parameters.Add(parName, MySqlDbType.DateTime).Value = oVal;
-			else if (oVal.GetType() == typeof(Int64))
-				cmd.Parameters.Add(parName, MySqlDbType.Int64).Value = oVal;
-			else if (oVal is bool)
-				cmd.Parameters.Add(parName, MySqlDbType.Bit).Value = Convert.ToBoolean(oVal);
-			else if (oVal is byte)
-				cmd.Parameters.Add(parName, MySqlDbType.Byte).Value = Convert.ToByte(oVal);
-			else if (oVal is Guid)
-				cmd.Parameters.Add(parName, MySqlDbType.Guid).Value = oVal;
-			else if (oVal is short)
-				cmd.Parameters.Add(parName, MySqlDbType.Int16).Value = oVal;
-			else if (oVal.GetType().IsEnum)
-			{
-				System.Type type = oVal.GetType();
-				if (Enum.GetUnderlyingType(type) == typeof(Byte))
-					cmd.Parameters.Add(parName, MySqlDbType.Byte).Value = Convert.ToByte(oVal);
-				else if (Enum.GetUnderlyingType(type) == typeof(short))
-					cmd.Parameters.Add(parName, MySqlDbType.Int16).Value = oVal;
-				else if (Enum.GetUnderlyingType(type) == typeof(int))
-					cmd.Parameters.Add(parName, MySqlDbType.Int32).Value = oVal;
-				else
-					throw new Exception("Cannot handle " + oVal.GetType().ToString() + " in addParameter");
-			}
-			else
-			{
-				throw new Exception("Cannot handle " + oVal.GetType().ToString() + " in addParameter");
-			}
+//			if (cmd is SqlCommand)
+//				addParameter((SqlCommand)cmd, parName, oVal);
+//			else if (cmd is MySqlCommand)
+//				addParameter((MySqlCommand)cmd, parName, oVal);
+            connector.AddParameter(cmd, parName, oVal);
 		}
 
 
 
-		/// <summary>
-		/// Returns an intersection of the provided lists
-		/// </summary>
-		/// <param name="a">Sorted list</param>
-		/// <param name="b">Sorted list</param>
-		/// <returns></returns>
-		public static List<int> Intersect(List<int> a, List<int> b)
-		{
-			List<int> result = new List<int>(a.Count + b.Count);
 
-			if (a == null || a.Count == 0)
-				return result;
-			else if (b == null || b.Count == 0)
-				return result;
 
-			int i = 0, j = 0;
 
-			while (i < a.Count && j < b.Count)
-			{
-				while (i < a.Count && j < b.Count && a[i] < b[j])
-					i++;
 
-				bool added = false;
-				while (i < a.Count && j < b.Count && a[i] == b[j])
-				{
-					if (!added)					// to avoid duplicates
-						result.Add(a[i]);
-					added = true;
-					i++;
-					j++;
-				}
+        DbCommand connect()
+        {
+            //DbConnection conn = null;
+            //switch (database)
+            //{
+            //    case EDatabase.SQLServer:
+            //        conn = new SqlConnection(connString);
+            //        break;
 
-				while (i < a.Count && j < b.Count && a[i] > b[j])
-					j++;
-			}
+            //    case EDatabase.MySQL:
+            //        conn = new MySqlConnection(connString);
+            //        break;
 
-			return result;
-		}
+            //    default: return null;
+            //}
+            DbConnection conn = connector.Connect();
 
-		public static int CompareFieldInfo(FieldInfo x, FieldInfo y)
-		{
-			if (x == null)
-			{
-				if (y == null)
-					return 0;
-				else
-					return -1;
-			}
-			else
-			{
-				if (y == null)
-					return 1;
-				else
-				{
-					if (x.Name == y.Name)
-						return 0;
+            conn.Open();
+            DbCommand cmd = conn.CreateCommand();
+            return cmd;
+        }
 
-					if (x.Name == "id")
-						return -1;
-					if (y.Name == "id")
-						return 1;
+        void close(DbCommand cmd)
+        {
+            if (cmd != null && cmd.Connection != null && cmd.Connection.State != ConnectionState.Closed)
+                cmd.Connection.Close();
+        }
 
-					if (IsClass(x.FieldType) != IsClass(y.FieldType))
-					{
-						if (IsClass(x.FieldType)) // We want classes to be at the end
-							return 1;
-						else
-							return -1;
-					}
+        /// <summary>
+        /// Adds parameters to the cmd object. The parameter values are in list. 
+        /// The order of the parameters in the query should match the order of parameter values
+        /// The parameters can be repeated in the query, but the order of parameters in the query
+        /// should still match the parameter values
+        /// </summary>
+        /// <param name="cmd"></param>
+        /// <param name="list"></param>
+        void addParameters(DbCommand cmd, params object[] list)
+        {
+            if (list == null || list.Length == 0)
+                return;
 
-					return x.Name.CompareTo(y.Name);
-				}
-			}
-		}
+            HashSet<string> parms = new HashSet<string>();
 
-		public static bool IsClass(Type t)
-		{
-			return (t.IsClass && t.Name != "String" && !IsStringArray(t));
-		}
+            Regex rgx = new Regex("@[0-9a-z_]+", RegexOptions.IgnoreCase);
+            MatchCollection matches = rgx.Matches(cmd.CommandText);
 
-		public static bool IsArray(FieldInfo fi)
-		{
-			return (fi.FieldType.IsArray || (fi.FieldType.FullName.IndexOf("System.Collections.Generic.List") >= 0) && !IsStringArray(fi));
-		}
+            int parNum = 0;
+            foreach (Match match in matches)
+            {
+                string parName = match.Value;
+                if (!parms.Contains(parName))
+                {
+                    parms.Add(parName);
 
-		public static bool IsStringArray(FieldInfo fi)
-		{
-			return (fi.FieldType.FullName.IndexOf("System.Collections.Generic.List`1[[System.String") >= 0);
-		}
+                    addParameter(cmd, parName, list[parNum]);
+                    parNum++;
+                }
+            }
+        }
 
-		public static bool IsStringArray(Type t)
-		{
-			return (t.FullName.IndexOf("System.Collections.Generic.List`1[[System.String") >= 0);
-		}
+        /// <summary>
+        /// Check to see if this is an ignored field
+        /// </summary>
+        /// <param name="t"></param>
+        /// <returns></returns>
+        bool Ignore(FieldInfo t)
+        {
+            int b = ignoredClasses.BinarySearch(t.FieldType.Name);
+            if (b >= 0)
+                return true;
 
-		/// <summary>
-		/// Goes through all the fields in the object and generates a string
-		/// </summary>
-		/// <param name="o"></param>
-		/// <returns></returns>
-		public string ObjectString(object o, int indent = 1)
-		{
-			StringBuilder sb = new StringBuilder();
+            b = ignoredFields.BinarySearch(t.Name);
+            if (b >= 0)
+                return true;
 
-			List<FieldInfo> fields = getFields(o.GetType());
-			string tabs = new string('\t', indent);
+            return CheckAttribute(t, typeof(DBIgnore).FullName);
+        }
 
-			for (int j = 0; j < fields.Count; j++)
-			{
-				FieldInfo fi = fields[j];
-				if (Ignore(fi))
-					continue;
+        bool CheckAttribute(FieldInfo t, string attribName)
+        {
+            Object[] ca = t.GetCustomAttributes(true);
+            foreach (Object attr in ca)
+            {
+                if (attr.ToString() == attribName)
+                    return true;
+            }
+            return false;
+        }
 
-				object fieldValue = fi.GetValue(o);
-				sb.AppendLine(tabs + fi.Name + ": " + (fieldValue ?? "*NULL*"));
-			}
-
-			return sb.ToString();
-		}
 	}
 }

@@ -18,6 +18,17 @@ namespace Daber
         {
             return new MySqlConnection(connString);
         }
+
+        public int Insert(DbCommand cmd, string table, string cols, string vals, out long id)
+        {
+            cmd.CommandText = string.Format("INSERT INTO {0} ({1}) VALUES ({2})", table, sbCols.ToString(), sbVals.ToString());
+            int rows = cmd.ExecuteNonQuery();
+
+            cmd.CommandText = "SELECT LAST_INSERT_ID()";
+            object o = cmd.ExecuteScalar();
+            id = Convert.ToInt64(o);
+            return rows;
+        }
         
         public void AddParameter(DbCommand dbCmd, string parName, object oVal)
         {

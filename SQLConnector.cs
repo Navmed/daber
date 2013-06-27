@@ -19,6 +19,23 @@ namespace Daber
             return new SqlConnection(connString);
         }
 
+        public int Insert(DbCommand cmd, string table, string cols, string vals, out long id)
+        {
+            cmd.CommandText = string.Format("INSERT INTO {0} ({1}) VALUES ({2})  SET @newId = SCOPE_IDENTITY()", table, cols, vals);
+
+            SqlParameter newId = new SqlParameter("@newId", SqlDbType.BigInt);
+            newId.Direction = ParameterDirection.Output;
+            cmd.Parameters.Add(newId);
+
+            int rows = cmd.ExecuteNonQuery();
+            if (newId.Value is DBNull)
+                id = 0;
+            else
+                id = Convert.ToInt64(newId.Value);
+
+            return rows;
+        }
+
         public void AddParameter(DbCommand dbCmd, string parName, object oVal)
         {
             SqlCommand cmd = (SqlCommand)dbCmd;

@@ -35,20 +35,13 @@ namespace DaberGen
 		}
 
 		Dictionary<int, string> map = new Dictionary<int, string>();
-		
-
 		EDatabase database = EDatabase.NotSpecified;
-
 		protected string connString;
 		public string ConnString { get { return (this.connString); } set { this.connString = value; } }
-
-		
 
 		public DB(string dbType, string connString)
 		{
 			this.connString = connString;
-
-
 			if (dbType.StartsWith("my"))
 			{
 				database = EDatabase.MySQL;
@@ -91,7 +84,6 @@ namespace DaberGen
 				map.Add((int)MySqlDbType.LongText, "string");
 				map.Add((int)MySqlDbType.Text, "string");
 				map.Add((int)MySqlDbType.Guid, "Guid");
-
 			}
 			else
 			{
