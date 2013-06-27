@@ -21,7 +21,7 @@ namespace Daber
 
         public int Insert(DbCommand cmd, string table, string cols, string vals, out long id)
         {
-            cmd.CommandText = string.Format("INSERT INTO {0} ({1}) VALUES ({2})  SET @newId = SCOPE_IDENTITY()", table, cols, vals);
+            cmd.CommandText = string.Format("INSERT INTO [{0}] ({1}) VALUES ({2})  SET @newId = SCOPE_IDENTITY()", table, cols, vals);
 
             SqlParameter newId = new SqlParameter("@newId", SqlDbType.BigInt);
             newId.Direction = ParameterDirection.Output;

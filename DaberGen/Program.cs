@@ -12,7 +12,7 @@ namespace DaberGen
 			if(args.Length < 3)
 			{
 				Console.WriteLine("DaberGen generates classes based on a database table");
-				Console.WriteLine("Usage: <database (mysql or sqlserver)> \"<connection string>\" <table> [generateform/f]");
+				Console.WriteLine("Usage: dabergen <database (mysql or sqlserver)> \"<connection string>\" <table> [generateform/f]");
 			}
 			else
 			{
