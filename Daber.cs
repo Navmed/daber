@@ -1051,36 +1051,12 @@ namespace Daber
 
 		void addParameter(DbCommand cmd, string parName, object oVal)
 		{
-//			if (cmd is SqlCommand)
-//				addParameter((SqlCommand)cmd, parName, oVal);
-//			else if (cmd is MySqlCommand)
-//				addParameter((MySqlCommand)cmd, parName, oVal);
             connector.AddParameter(cmd, parName, oVal);
 		}
 
-
-
-
-
-
-
         DbCommand connect()
         {
-            //DbConnection conn = null;
-            //switch (database)
-            //{
-            //    case EDatabase.SQLServer:
-            //        conn = new SqlConnection(connString);
-            //        break;
-
-            //    case EDatabase.MySQL:
-            //        conn = new MySqlConnection(connString);
-            //        break;
-
-            //    default: return null;
-            //}
             DbConnection conn = connector.Connect();
-
             conn.Open();
             DbCommand cmd = conn.CreateCommand();
             return cmd;
