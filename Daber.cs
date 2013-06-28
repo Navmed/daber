@@ -47,7 +47,7 @@ namespace Daber
 		/// Use this to allow insertion of ids when identity is NOT set. Normally this field is ignored while inserting assuming that id is an identity column
 		/// </summary>
 		public bool InsertId = false;
-		string IDCOL = "Id";
+		string IdCol = "Id";
 
 		protected DLogError logError;
 		public DLogError LogError { get { return (this.logError); } set { this.logError = value; } }
@@ -383,7 +383,7 @@ namespace Daber
                         if (Ignore(fi))
                             continue;
 
-                        if (!InsertId && fi.Name.Equals(IDCOL, StringComparison.CurrentCultureIgnoreCase))
+                        if (!InsertId && fi.Name.Equals(IdCol, StringComparison.CurrentCultureIgnoreCase))
                             continue;
 
                         string col = dbFieldMap[fi.Name];
@@ -979,9 +979,8 @@ namespace Daber
 				return DBFieldMaps[table];
 
 			List<FieldInfo> fields = getFields(t);
-
-
 			DbCommand cmd = null;
+			Dictionary<string, string> map = null;
 
 			try
 			{
@@ -992,7 +991,7 @@ namespace Daber
 				if (reader == null)
 					return null;
 
-				Dictionary<string, string> map = new Dictionary<string, string>(fields.Count);
+				map = new Dictionary<string, string>(fields.Count);
 
 				while (reader.Read())
 				{
@@ -1010,7 +1009,6 @@ namespace Daber
 				}
 
 				DBFieldMaps.Add(table, map);
-				return map;
 			}
 			catch (Exception ex)
 			{
@@ -1022,7 +1020,12 @@ namespace Daber
 				close(cmd);
 			}
 
-			return null;
+			// Get the IDENTITY COLUMN
+			IdCol = connector.GetIdentityColumn(table);
+
+
+
+			return map;
 		}
 
         void addToInsertString(DbCommand cmd, int index, string col, object value, ref StringBuilder sbCols, ref StringBuilder sbValues)

@@ -19,6 +19,30 @@ namespace Daber
             return new SqlConnection(connString);
         }
 
+		// Get the Primary Key/Identity Column
+		public string GetIdentityColumn(string table)
+		{
+			// Todo: Add error handling
+			DbConnection conn = Connect();
+			conn.Open();
+			DbCommand cmd = conn.CreateCommand();
+			
+			cmd.CommandText = string.Format(@"select c.name
+											from sys.objects o 
+											inner join sys.columns c on o.object_id = c.object_id
+											where c.is_identity = 1
+											AND o.name='{0}'", table);
+			DbDataReader reader = cmd.ExecuteReader();
+			if (reader != null)
+			{
+				while (reader.Read())
+				{
+					return reader.GetString(0);
+				}
+			}
+			return null;
+		}
+
         public int Insert(DbCommand cmd, string table, string cols, string vals, out long id)
         {
             cmd.CommandText = string.Format("INSERT INTO [{0}] ({1}) VALUES ({2})  SET @newId = SCOPE_IDENTITY()", table, cols, vals);
