@@ -1,8 +1,7 @@
-﻿using System;
+﻿// This is an example progam that uses the NorthWind database to show the capabilities of daber
+
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Daber;
 
 namespace DaberExample
@@ -67,6 +66,33 @@ namespace DaberExample
 			// Delete the user with username "tom"
 			db.Delete(Product.TableName,
 					  Product.Col.ProductName, "Apple Sauce");
+
+			// More complex examples
+			// Join: Get all products of a certain category name
+			List<Product> list = db.GetListQuery<Product>(@"SELECT ProductID FROM PRODUCTS AS p
+										JOIN Categories AS c ON c.CategoryID=p.CategoryID
+										WHERE CategoryName='Beverages'");
+
+			// Another way of getting the above count
+			int count = db.Get<int>(Product.TableName, "COUNT(0)", 
+									Product.Col.SupplierID, 1);
+
+			// Get count of Products from supplier 1
+			count = db.GetQuery<int>("SELECT COUNT(0) FROM Products WHERE SupplierId=@supplierId", 1);
+
+			// Get Categories with low stock, which have few items on order
+			List<int> lowStock = db.GetListQuery<int>("SELECT CategoryId FROM Products GROUP BY CategoryId HAVING SUM(UnitsInStock) - SUM(UnitsOnOrder) < @v0", 200);
+
+			// Get the difference between the Units in Stock and Unit on Order for Category 1
+			int diff = db.Get<int>(Product.TableName, "SUM(UnitsInStock) - SUM(UnitsOnOrder)",
+			                       Product.Col.CategoryID, 1);
+
+			// Set the Reorder Level to the sum of the Unit in Stock + Units on Order, for items have stock below 5 and are not discontinued
+			db.Update(Product.TableName, null, 1,
+			          Product.Col.ReorderLevel + "=", Product.Col.UnitsInStock + "+" + Product.Col.UnitsOnOrder,
+			          Product.Col.UnitsInStock+"<", 5,
+			          Product.Col.Discontinued, 0);
+
 		}
 	}
 }
