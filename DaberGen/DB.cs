@@ -167,7 +167,7 @@ namespace DaberGen
 		{
 			int diff = 'a' - 'A';
 			StringBuilder sb = new StringBuilder(column.Length);
-			char[] ca = column.ToLower().ToCharArray();
+			char[] ca = column.ToCharArray();
 
 			bool newWord = true;
 
@@ -175,7 +175,7 @@ namespace DaberGen
 			{
 				char c = ca[i];
 				
-				if(newWord)
+				if(newWord && c >= 'a' && c <= 'z')	// Conver to upper case
 					c = (char)(Convert.ToInt32(ca[i]) - diff);
 
 				if(c == '_' || c == ' ')
