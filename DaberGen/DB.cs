@@ -115,66 +115,52 @@ namespace DaberGen
 		{
 			List<Field> list = new List<Field>();
 			DbConnection conn = null;
-			try
-			{
 
-				DbCommand cmd;
-				if (database == EDatabase.MySQL)
+			DbCommand cmd;
+			if (database == EDatabase.MySQL)
+			{
+				conn = new MySqlConnection(connString);
+				conn.Open();
+				cmd = new MySqlCommand("SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + table.ToUpper() + "' order by column_name", (MySqlConnection)conn);
+			}
+			else
+			{
+				conn = new SqlConnection(connString);
+				conn.Open();
+				cmd = new SqlCommand("SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + table + "' order by column_name", (SqlConnection)conn);
+			}
+			DbDataReader reader = cmd.ExecuteReader();
+			if(reader != null)
+			{
+				while(reader.Read())
 				{
-					conn = new MySqlConnection(connString);
-					conn.Open();
-					cmd = new MySqlCommand("SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + table.ToUpper() + "' order by column_name", (MySqlConnection)conn);
-				}
-				else
-				{
-					conn = new SqlConnection(connString);
-					conn.Open();
-					cmd = new SqlCommand("SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + table.ToUpper() + "' order by column_name", (SqlConnection)conn);
-				}
-				DbDataReader reader = cmd.ExecuteReader();
-				if(reader != null)
-				{
-					while(reader.Read())
+					string colname = reader.GetString(3);
+					string dbtype = reader.GetString(7);
+					if(list.FindIndex(delegate(Field find) { return find.dbname == colname; }) < 0)
 					{
-						string colname = reader.GetString(3);
-						string dbtype = reader.GetString(7);
-						if(list.FindIndex(delegate(Field find) { return find.dbname == colname; }) < 0)
+						Field f = new Field();
+						f.classname = f.dbname = colname;
+						object o = null;
+						if (database == EDatabase.MySQL)
 						{
-							Field f = new Field();
-							f.classname = f.dbname = colname;
-							object o = null;
-							if (database == EDatabase.MySQL)
-							{
-								//Exceptions that are not found in the enum, but the database seems to allow
-								if (dbtype == "int")
-									dbtype = "Int32";
-								else if (dbtype == "tinyint")
-									dbtype = "byte";
+							//Exceptions that are not found in the enum, but the database seems to allow
+							if (dbtype == "int")
+								dbtype = "Int32";
+							else if (dbtype == "tinyint")
+								dbtype = "byte";
 
-								o = Enum.Parse(typeof(MySqlDbType), dbtype, true);
-							}
-							else
-								o = Enum.Parse(typeof(SqlDbType), dbtype, true);
-							f.datatype = (int)o;
-							list.Add(f);
+							o = Enum.Parse(typeof(MySqlDbType), dbtype, true);
 						}
+						else
+							o = Enum.Parse(typeof(SqlDbType), dbtype, true);
+						f.datatype = (int)o;
+						list.Add(f);
 					}
-					reader.Close();
 				}
-
-				return list;
-			}
-			catch(Exception e)
-			{
-				//Logger.Error(0, deviceId, "Exception in GetUpdateVersion", e);
-			}
-			finally
-			{
-				if(conn != null)
-					conn.Close();
+				reader.Close();
 			}
 
-			return null;
+			return list;
 		}
 
 		public string DBtoCode(string column)
@@ -307,24 +293,26 @@ namespace DaberGen
 			StringBuilder sb = new StringBuilder();
             sb.AppendLine("public class " + singular);
 			sb.AppendLine(("{"));
-			
-//			sb.AppendLine();
 			sb.Append(GetClassFields(table));
 			sb.AppendLine(("}"));
 			sb.AppendLine();
+			return sb.ToString();
+		}
+
+		public string GetAssignments(string table)
+		{
+			StringBuilder sb = new StringBuilder();
+
 			sb.AppendLine();
 			sb.AppendLine(("/*"));
 			sb.AppendLine(GetAssignments(table, true));
 			sb.AppendLine();
 			sb.AppendLine(GetAssignments(table, false));
-
-
 			sb.AppendLine(("*/"));
-
 			return sb.ToString();
 		}
 
-		public string GetForm(string table)
+		public string GetWebForm(string table)
 		{
 // 	<tr>
 // 		<td><asp:Label ID="Label1" runat="server" Text="Label"></asp:Label>	</td>
@@ -345,9 +333,32 @@ namespace DaberGen
 				sb.AppendLine("</tr>");
 			}
 
+			return sb.ToString();
+		}
 
+		public string GetHTMLForm(string table)
+		{
+			// 	<tr>
+			// 		<td><asp:Label ID="Label1" runat="server" Text="Label"></asp:Label>	</td>
+			// 		<td><asp:TextBox ID="TextBox1" runat="server"></asp:TextBox></td>
+			// 	</tr>
+
+			List<Field> fields = GetColumns(table);
+			StringBuilder sb = new StringBuilder();
+
+			for (int i = 0; i < fields.Count; i++)
+			{
+				string col = fields[i].classname;
+				string field = DBtoCode(col);
+				string type = map[fields[i].datatype];
+				sb.AppendLine("<tr>");
+				sb.AppendFormat("\t<td>{0}</td>\n", field);
+				sb.AppendFormat("\t<td>\n\t\t<input id=\"{0}\" type=\"text\" />\n\t</td>\n", field);
+				sb.AppendLine("</tr>");
+			}
 
 			return sb.ToString();
 		}
+
 	}
 }

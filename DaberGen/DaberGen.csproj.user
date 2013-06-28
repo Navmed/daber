@@ -11,9 +11,9 @@
     <VerifyUploadedFiles>false</VerifyUploadedFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments>SQLServer "Server=localhost%3bDatabase=testdb1%3bTrusted_Connection=True%3b" User</StartArguments>
+    <StartArguments>SQLServer "Server=localhost%3bDatabase=Northwind%3bTrusted_Connection=True%3b" Products</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <StartArguments>SQLServer "Server=localhost%3bDatabase=testdb1%3bTrusted_Connection=True%3b" User</StartArguments>
+    <StartArguments>SQLServer "Server=localhost%3bDatabase=Northwind%3bTrusted_Connection=True%3b" Products</StartArguments>
   </PropertyGroup>
 </Project>

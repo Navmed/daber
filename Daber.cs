@@ -49,9 +49,6 @@ namespace Daber
 		public bool InsertId = false;
 		string IDCOL = "Id";
 
-		protected string connString;
-		public string ConnString { get { return (this.connString); } set { this.connString = value; } }
-
 		protected DLogError logError;
 		public DLogError LogError { get { return (this.logError); } set { this.logError = value; } }
 
@@ -59,10 +56,8 @@ namespace Daber
 		
         IConnector connector;
 
-		public DB(string connectionString, IConnector connector)
+		public DB(IConnector connector)
 		{
-			this.connString = connectionString;
-			//=this.database = database;
             this.connector = connector;
 		}
 
