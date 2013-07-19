@@ -71,7 +71,7 @@ namespace DaberExample
 			// Join: Get all products of a certain category name
 			List<Product> list = db.GetListQuery<Product>(@"SELECT ProductID FROM PRODUCTS AS p
 										JOIN Categories AS c ON c.CategoryID=p.CategoryID
-										WHERE CategoryName='Beverages'");
+										WHERE CategoryName=@v0", "Beverages");
 
 			// Another way of getting the above count
 			int count = db.Get<int>(Product.TableName, "COUNT(0)", 
