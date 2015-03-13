@@ -39,3 +39,5 @@ db.Update(WebUser.TableName, null, 1,
 db.Delete(WebUser.TableName, 
           WebUser.Col.Username, "tom");
 ```
+
+Detailed Example: https://github.com/Navmed/daber/blob/master/Example/Program.cs
