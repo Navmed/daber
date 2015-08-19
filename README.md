@@ -1,5 +1,5 @@
 ## Introduction ##
-A quick and simple Database first .NET ORM libary meant to be small and efficient with low overhead, without have to relearn complex new API's.
+A quick and simple Database first .NET ORM library meant to be small and efficient with low overhead, without have to relearn complex new API's.
 
 ## Goals ##
 1. Use the power of SQL without rebuilding a complete new API
